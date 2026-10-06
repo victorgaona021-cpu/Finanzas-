@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mis Finanzas</title><meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#14181f;--mu:#6b7280;--ac:#0f9d6b;--bd:#e5e7eb;--rd:#dc2626;--wn:#d97706;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1116;--card:#171b22;--tx:#eef0f3;--mu:#98a1ae;--bd:#262c36}}
+:root[data-theme="dark"]{--bg:#0e1116;--card:#171b22;--tx:#eef0f3;--mu:#98a1ae;--bd:#262c36}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:84px}
+main{max-width:520px;margin:0 auto;padding:14px}
+h2{font-size:15px;margin:18px 0 8px;color:var(--mu);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
+input,select,button{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:11px;width:100%}
+.amt{font-size:34px;font-weight:700;text-align:center;border:none;background:transparent}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.chip{width:auto;padding:8px 12px;border-radius:99px;cursor:pointer}
+.chip.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.pri{background:var(--ac);color:#fff;border:none;font-weight:600;padding:14px;margin-top:8px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd)}
+.row:last-child{border:none}.mu{color:var(--mu);font-size:13px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bar{height:8px;border-radius:5px;background:var(--ac);margin-top:4px}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{border:none;background:none;border-radius:0;padding:12px 2px;font-size:11.5px;color:var(--mu)}
+nav button.on{color:var(--ac);font-weight:700}
+.al{background:#fef3c7;color:#78350f;border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:14px}
+.x{width:auto;border:none;background:none;color:var(--mu);padding:4px 8px}
+.big{font-size:26px;font-weight:700}.pos{color:var(--ac)}.neg{color:var(--rd)}
+</style></head><body><main id="app"></main>
+<nav id="nav"></nav>
+<script>
+const CATS=[["Comida","🍔"],["Transporte","🚌"],["Gym","💪"],["Salidas","🎉"],["Compras","🛍️"],["Servicios","💡"],["Otros","📦"]];
+const TABS=[["plan","🧭 Plan"],["add","➕ Gasto"],["fix","📅 Fijos"],["cards","💳 Tarjetas"],["more","⚙️ Más"]];
+const DN=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+let S={snap:{date:"",main:0,cash:0,mp:0,ah:0},exp:[],inc:[],cards:[],fix:[],pagos:[],cfg:{rate:10}};
+try{const r=JSON.parse(localStorage.getItem("fin1")||"null");if(r)S=Object.assign(S,r)}catch(e){}
+let tab="plan",cat="Comida",pm="Efectivo",F={type:"i",freq:"w"};
+const save=()=>{try{localStorage.setItem("fin1",JSON.stringify(S))}catch(e){}};
+const $=s=>document.querySelector(s);
+const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const M=n=>(Math.round(n)||0).toLocaleString("es-MX",{style:"currency",currency:"MXN",maximumFractionDigits:0});
+const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const pd=s=>new Date(s+"T00:00"),addD=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const mk=(y,m,d)=>{const b=new Date(y,m,1);return new Date(b.getFullYear(),b.getMonth(),Math.min(d,new Date(b.getFullYear(),b.getMonth()+1,0).getDate()))};
+const today=()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate())};
+const fmtD=d=>d.toLocaleDateString("es-MX",{day:"numeric",month:"short"});
+const sum=(a,f)=>a.filter(f).reduce((s,x)=>s+x.amount,0);
+const occ=(f,a,b)=>{const r=[];if(!a||a>=b)return r;for(let d=addD(pd(a),1),e=pd(b);d<=e;d=addD(d,1)){const ok=f.freq==="w"?d.getDay()==f.day:Math.min(+f.day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate())==d.getDate();if(ok)r.push(iso(d))}return r};
+
+function cardInfo(c){
+  const t=today(),cut=+c.cut,pay=+c.pay;
+  let lc=mk(t.getFullYear(),t.getMonth(),cut);if(lc>t)lc=mk(t.getFullYear(),t.getMonth()-1,cut);
+  const due=l=>{const d=mk(l.getFullYear(),l.getMonth(),pay);return d<=l?mk(l.getFullYear(),l.getMonth()+1,pay):d};
+  let end=lc,d=due(end);
+  if(c.paid===iso(d)){end=mk(lc.getFullYear(),lc.getMonth()+1,cut);d=due(end)}
+  const start=mk(end.getFullYear(),end.getMonth()-1,cut);
+  const a=sum(S.exp,x=>x.card===c.name&&x.date>iso(start)&&x.date<=iso(end))+(c.dpaid?0:+c.debt0||0);
+  return{end,due:d,amount:a,days:Math.round((d-t)/864e5),closed:end<=t};
+}
+const dueFor=(c,s)=>{const d=pd(s);let k=mk(d.getFullYear(),d.getMonth(),+c.cut);if(k<d)k=mk(d.getFullYear(),d.getMonth()+1,+c.cut);let p=mk(k.getFullYear(),k.getMonth(),+c.pay);if(p<=k)p=mk(k.getFullYear(),k.getMonth()+1,+c.pay);return iso(p)};
+const used=c=>(+c.debt0||0)+sum(S.exp,x=>x.card===c.name&&x.date>=(c.added||"2000-01-01"))-sum(S.pagos,p=>p.card===c.name);
+
+function calc(){
+  const T=today(),t=iso(T),sn=S.snap,ok=!!sn.date,base=sn.date||t;
+  let main=+sn.main||0,cash=+sn.cash||0;
+  S.fix.forEach(f=>{const n=occ(f,base,t).length*f.amt;main+=f.type==="i"?n:-n});
+  S.inc.forEach(x=>{if(x.date>base&&x.date<=t)main+=x.amount});
+  S.exp.forEach(x=>{if(x.date>base&&x.date<=t){if(x.card==="Efectivo")cash-=x.amount;else if(x.card==="Débito")main-=x.amount}});
+  S.pagos.forEach(p=>{if(p.date>base&&p.date<=t)main-=p.amount});
+  const ew=iso(addD(T,(7-T.getDay())%7)),em=iso(new Date(T.getFullYear(),T.getMonth()+1,0));
+  const up=e=>{let o=0,i=0;S.fix.forEach(f=>{const n=occ(f,t,e).length*f.amt;f.type==="i"?i+=n:o+=n});S.cards.forEach(c=>{const f=cardInfo(c);if(f.due<=pd(e))o+=f.amount});return{o,i}};
+  const w=up(ew),m=up(em),mp=+sn.mp||0,ah=+sn.ah||0;
+  const mpT=Math.max(0,(m.o-w.o)-(m.i-w.i));
+  const avgW=S.fix.filter(f=>f.type==="i").reduce((s,f)=>s+(f.freq==="w"?f.amt:f.amt/4.33),0);
+  const a0=main+cash+mp+ah+w.i-w.o-mpT-ah;
+  const sv=Math.max(0,Math.min(Math.round(avgW*(S.cfg.rate||0)/100),a0));
+  let libre=a0-sv;
+  const ws=iso(addD(T,-((T.getDay()+6)%7)));
+  S.exp.forEach(x=>{const c=S.cards.find(c=>c.name===x.card);if(c&&x.date>=ws&&x.date<=t&&dueFor(c,x.date)!==iso(cardInfo(c).due))libre-=x.amount});
+  return{ok,main,cash,mp,ah,w,m,mpT,sv,libre,days:(7-T.getDay())%7+1};
+}
+
+function bestCard(){
+  const t=today();let b=null;
+  S.cards.forEach(c=>{const cut=+c.cut;let k=mk(t.getFullYear(),t.getMonth(),cut);if(k<t)k=mk(t.getFullYear(),t.getMonth()+1,cut);let p=mk(k.getFullYear(),k.getMonth(),+c.pay);if(p<=k)p=mk(k.getFullYear(),k.getMonth()+1,+c.pay);const days=Math.round((p-t)/864e5);if(!b||days>b.days)b={c,days,p}});
+  return b;
+}
+
+function vPlan(){
+  const k=calc(),dl=k.libre/k.days,b=bestCard();
+  const row=(n,sh,hv,note)=>`<div class="row"><div>${n}<div class="mu">${note}</div></div><div style="text-align:right"><b>${M(sh)}</b><div class="mu">tienes ${M(hv)}</div></div></div>`;
+  let tips=[];
+  if(!k.ok)tips.push("Primero captura tus saldos en ⚙️ Más para que el plan sea real.");
+  if(k.libre<0)tips.push(`⚠️ Te faltan ${M(-k.libre)} para cubrir pagos${k.sv?" y ahorro":""} de esta semana. Evita gastos extra y no uses crédito para lo que no sea necesario.`);
+  else{tips.push(`Puedes gastar hasta ${M(dl)} por día (${M(k.libre)} en total esta semana). Lo que no gastes, muévelo a ahorro.`);
+    if(S.cards.length&&b)tips.push(`Si necesitas usar crédito, la mejor hoy es ${esc(b.c.name)}: pagarías hasta el ${fmtD(b.p)} (${b.days} días). Úsalo solo si lo pagas completo y sin salirte de tu libre.`)}
+  if(k.m.o>k.main+k.cash+k.mp+k.m.i)tips.push("Los pagos que faltan del mes superan tu dinero + ingresos esperados. Revisa tus gastos fijos.");
+  return alerts()+`<div class="c" style="text-align:center"><div class="mu">Libre para gastar esta semana</div><div class="big ${k.libre>=0?"pos":"neg"}" style="font-size:38px">${M(k.libre)}</div><div class="mu">${k.libre>=0?"≈ "+M(dl)+" por día":"vas corto"} · quedan ${k.days} día(s)</div></div>
+  <div class="g2"><div class="c"><div class="mu">Pagos esta semana</div><div class="big neg">${M(k.w.o)}</div></div><div class="c"><div class="mu">Ingresos esperados</div><div class="big pos">${M(k.w.i)}</div></div>
+  <div class="c"><div class="mu">Pagos resto del mes</div><div class="big">${M(k.m.o)}</div></div><div class="c"><div class="mu">Ingresos resto del mes</div><div class="big">${M(k.m.i)}</div></div></div>
+  <h2>Dónde debe estar tu dinero</h2><div class="c">${row("Cuenta principal + efectivo",Math.max(0,k.libre+k.w.o-k.w.i),k.main+k.cash,"libre + pagos de la semana")}${row("Caja Mercado Pago",k.mpT,k.mp,"pagos del resto del mes")}${row("Caja de ahorro",k.ah+k.sv,k.ah,k.sv?"mueve "+M(k.sv)+" esta semana ("+(S.cfg.rate||0)+"% de tu ingreso)":"sin aporte esta semana")}</div>
+  <h2>Asistente</h2><div class="c">${tips.map(t=>`<p style="margin:0 0 8px">${t}</p>`).join("")}<div class="mu">Guía automática con tus datos; no es asesoría financiera.</div></div>
+  ${S.cards.length?`<h2>Crédito disponible</h2><div class="c">${S.cards.map(c=>`<div class="row"><span>💳 ${esc(c.name)}</span><span><b>${M((+c.limit||0)-used(c))}</b> <span class="mu">de ${M(+c.limit||0)}</span></span></div>`).join("")}</div>`:""}`;
+}
+
+function alerts(){
+  return S.cards.map(c=>({c,i:cardInfo(c)})).filter(x=>x.i.days<=5&&x.i.amount>0)
+   .map(x=>`<div class="al">⏰ <b>${esc(x.c.name)}</b>: paga ${M(x.i.amount)} ${x.i.days<=0?"hoy":"en "+x.i.days+" día(s)"} (límite ${fmtD(x.i.due)})</div>`).join("");
+}
+
+function vAdd(){
+  const opts=["Efectivo","Débito",...S.cards.map(c=>c.name)];
+  const rec=[...S.exp].reverse().slice(0,6),k=calc();
+  return `<div class="mu" style="text-align:center">Libre esta semana: <b class="${k.libre>=0?"pos":"neg"}">${M(k.libre)}</b></div><div class="c"><input id="a" class="amt" type="number" inputmode="decimal" placeholder="$0">
+  <div class="chips">${CATS.map(([n,e])=>`<button class="chip ${n===cat?"on":""}" onclick="cat='${n}';render()">${e} ${n}</button>`).join("")}</div>
+  <div class="g2"><select onchange="pm=this.value">${opts.map(o=>`<option ${o===pm?"selected":""}>${esc(o)}</option>`).join("")}</select><input id="d" type="date" value="${iso(today())}"></div>
+  <input id="n" placeholder="Nota (opcional)" style="margin-top:8px"><button class="pri" onclick="addExp()">Guardar gasto</button></div>
+  <h2>Últimos</h2><div class="c">${rec.length?rec.map(x=>`<div class="row"><div>${(CATS.find(c=>c[0]===x.cat)||[0,""])[1]} ${esc(x.cat)}<div class="mu">${x.date} · ${esc(x.card)} ${esc(x.note)}</div></div><div><b>${M(x.amount)}</b><button class="x" onclick="del('exp','${x.id}')">✕</button></div></div>`).join(""):'<div class="mu">Aún no hay gastos.</div>'}</div>`;
+}
+function addExp(){const a=parseFloat($("#a").value);if(!(a>0)){$("#a").focus();return}
+  S.exp.push({id:Date.now()+"",date:$("#d").value||iso(today()),amount:a,cat,card:pm,note:$("#n").value});save();render()}
+function del(k,id){S[k]=S[k].filter(x=>x.id!==id);save();render()}
+
+function vFix(){
+  const L=[...S.fix].sort((a,b)=>a.type<b.type?-1:1);
+  return `<div class="c"><div class="g2"><select onchange="F.type=this.value;render()"><option value="i" ${F.type==="i"?"selected":""}>💰 Ingreso</option><option value="g" ${F.type==="g"?"selected":""}>📌 Gasto fijo</option></select>
+  <select onchange="F.freq=this.value;render()"><option value="w" ${F.freq==="w"?"selected":""}>Cada semana</option><option value="m" ${F.freq==="m"?"selected":""}>Cada mes</option></select></div>
+  <input id="fn" placeholder="Nombre (Sueldo, Gimnasio, Spotify, Mamá…)" style="margin-top:8px">
+  <div class="g2" style="margin-top:8px"><input id="fa" type="number" inputmode="decimal" placeholder="Monto">${F.freq==="w"?`<select id="fd">${DN.map((n,i)=>`<option value="${i}" ${i==5?"selected":""}>${n}</option>`).join("")}</select>`:`<input id="fd" type="number" min="1" max="31" placeholder="Día del mes">`}</div>
+  <button class="pri" onclick="addFix()">Agregar</button></div>
+  <h2>Mis ingresos y pagos fijos</h2><div class="c">${L.length?L.map(f=>`<div class="row"><div>${f.type==="i"?"💰":"📌"} ${esc(f.name)}<div class="mu">${f.freq==="w"?"Cada "+DN[f.day].toLowerCase():"Día "+f.day+" de cada mes"}</div></div><div><b class="${f.type==="i"?"pos":""}">${M(f.amt)}</b><button class="x" onclick="del('fix','${f.id}')">✕</button></div></div>`).join(""):'<div class="mu">Agrega aquí tu pago semanal, gimnasio, Spotify, etc.</div>'}</div>`;
+}
+function addFix(){const n=$("#fn").value.trim(),a=parseFloat($("#fa").value),d=+$("#fd").value;
+  if(!n||!(a>0)||(F.freq==="m"&&!(d>=1&&d<=31)))return;
+  S.fix.push({id:Date.now()+"",type:F.type,name:n,amt:a,freq:F.freq,day:d});save();render()}
+
+function vCards(){
+  return alerts()+S.cards.map((c,i)=>{const f=cardInfo(c),av=(+c.limit||0)-used(c);return`<div class="c"><div class="row" style="border:none"><b>💳 ${esc(c.name)}</b><button class="x" onclick="S.cards.splice(${i},1);save();render()">✕</button></div>
+  <div class="mu">Corte día ${c.cut} · pago día ${c.pay} · crédito disponible ${M(av)} de ${M(+c.limit||0)}</div>
+  <div class="big" style="margin-top:6px">${M(f.amount)}</div>
+  <div class="mu">${f.closed?"Cerrado el":"Cierra el"} ${fmtD(f.end)} · pagar antes del <b>${fmtD(f.due)}</b> (${f.days<=0?"hoy":"en "+f.days+" días"})</div>
+  <button class="pri" style="padding:10px" onclick="payCard(${i})">Ya pagué este estado de cuenta</button></div>`}).join("")+
+  `<h2>Agregar tarjeta</h2><div class="c"><input id="cn" placeholder="Banco (ej. BBVA)"><div class="g2" style="margin-top:8px"><input id="cc" type="number" min="1" max="31" placeholder="Día de corte"><input id="cp" type="number" min="1" max="31" placeholder="Día límite de pago"><input id="cl" type="number" inputmode="decimal" placeholder="Límite de crédito"><input id="cd" type="number" inputmode="decimal" placeholder="Saldo que debes hoy"></div><button class="pri" onclick="addCard()">Guardar tarjeta</button></div>`;
+}
+function addCard(){const n=$("#cn").value.trim(),c=+$("#cc").value,p=+$("#cp").value;
+  if(!n||!(c>=1&&c<=31)||!(p>=1&&p<=31)||S.cards.some(x=>x.name===n))return;
+  S.cards.push({name:n,cut:c,pay:p,limit:+$("#cl").value||0,debt0:+$("#cd").value||0,added:iso(today())});save();render()}
+function payCard(i){const c=S.cards[i],f=cardInfo(c);
+  if(f.amount>0)S.pagos.push({id:Date.now()+"",card:c.name,amount:f.amount,date:iso(today())});
+  c.paid=iso(f.due);c.dpaid=true;save();render()}
+
+function vMore(){
+  const sn=S.snap,t=today(),ms=iso(new Date(t.getFullYear(),t.getMonth(),1)),me=iso(new Date(t.getFullYear(),t.getMonth()+1,0));
+  const ps=iso(new Date(t.getFullYear(),t.getMonth()-1,1)),pe=iso(new Date(t.getFullYear(),t.getMonth(),0));
+  const cur=S.exp.filter(x=>x.date>=ms&&x.date<=me),pr=S.exp.filter(x=>x.date>=ps&&x.date<=pe),tot=sum(cur,()=>1);
+  const by=CATS.map(([n,e])=>({n,e,v:sum(cur,x=>x.cat===n),p:sum(pr,x=>x.cat===n)})).filter(x=>x.v||x.p).sort((a,b)=>b.v-a.v),mx=Math.max(1,...by.map(x=>x.v));
+  return `<h2>Mis saldos hoy</h2><div class="c"><div class="mu" style="margin-bottom:8px">${sn.date?"Última actualización: "+sn.date:"Captura lo que tienes ahora en cada lugar"}</div>
+  <div class="g2"><label class="mu">Cuenta principal<input id="s1" type="number" value="${sn.main||""}" placeholder="0"></label><label class="mu">Efectivo<input id="s2" type="number" value="${sn.cash||""}" placeholder="0"></label>
+  <label class="mu">Caja Mercado Pago<input id="s3" type="number" value="${sn.mp||""}" placeholder="0"></label><label class="mu">Caja de ahorro<input id="s4" type="number" value="${sn.ah||""}" placeholder="0"></label></div>
+  <label class="mu" style="display:block;margin-top:8px">% de tu ingreso a ahorrar por semana<input id="s5" type="number" value="${S.cfg.rate}"></label>
+  <button class="pri" onclick="saveSnap()">Guardar saldos</button>
+  <div class="mu" style="margin-top:6px">Actualízalos cuando muevas dinero entre cajas. Desde esa fecha la app suma ingresos y resta gastos sola.</div></div>
+  <h2>Gastos del mes: ${M(tot)}</h2><div class="c">${by.length?by.map(x=>`<div style="margin-bottom:10px"><div class="row" style="border:none;padding:0"><span>${x.e} ${x.n}</span><span><b>${M(x.v)}</b> <span class="mu">${tot?Math.round(x.v/tot*100):0}% · mes pasado ${M(x.p)}</span></span></div><div class="bar" style="width:${x.v/mx*100}%"></div></div>`).join(""):'<div class="mu">Sin gastos este mes.</div>'}</div>
+  <h2>Respaldo</h2><div class="c"><div class="mu">Para pasar tus datos del celular a la compu: genera el respaldo, cópialo y pégalo en la otra app con Importar.</div><textarea id="bk" rows="4" style="width:100%;margin-top:8px;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:10px"></textarea>
+  <div class="g2" style="margin-top:8px"><button onclick="$('#bk').value=JSON.stringify(S);$('#bk').select()">Generar</button><button onclick="impBk()">Importar</button></div></div>`;
+}
+function saveSnap(){S.snap={date:iso(today()),main:+$("#s1").value||0,cash:+$("#s2").value||0,mp:+$("#s3").value||0,ah:+$("#s4").value||0};S.cfg.rate=+$("#s5").value||0;save();tab="plan";render()}
+function impBk(){try{const r=JSON.parse($("#bk").value);if(r&&r.exp&&r.cards&&confirm("Esto reemplaza los datos de este dispositivo. ¿Continuar?")){S=Object.assign(S,r);save();tab="plan";render()}}catch(e){alert("Respaldo no válido")}}
+
+function render(){
+  $("#app").innerHTML={plan:vPlan,add:vAdd,fix:vFix,cards:vCards,more:vMore}[tab]();
+  $("#nav").innerHTML=TABS.map(([k,l])=>`<button class="${k===tab?"on":""}" style="flex:1" onclick="tab='${k}';render()">${l}</button>`).join("");
+}
+render();
+</script></body></html>
