@@ -136,7 +136,10 @@ function addFix(){const n=$("#fn").value.trim(),a=parseFloat($("#fa").value),v=$
   S.fix.push({id:Date.now()+"",type:F.type,name:n,amt:a,freq:m?"m":"w",every:F.freq==="b"?2:1,start:v,day:m?dt.getDate():dt.getDay()});save();render()}
 function lastOcc(f){const T=today(),r=occ(f,iso(addD(T,-62)),iso(T));return r[r.length-1]}
 function markPend(id){const f=S.fix.find(x=>x.id===id),d=f&&lastOcc(f);if(!d){alert("No encontré un pago reciente de este concepto");return}S.pend[id+"@"+d]=true;save();render()}
-function stBtn(f){const d=lastOcc(f);if(!d)return"";const k=f.id+"@"+d;return S.pend[k]?`<button class="x" style="color:var(--rd)" onclick="undoPend('${k}')">Sin pagar ✕</button>`:`<button class="x" style="color:var(--ac)" onclick="if(confirm('¿Marcar ${esc(f.name)} como NO pagado este mes?'))markPend('${f.id}')">✓ Pagado</button>`}
+function stBtn(f){const T=today(),d=lastOcc(f),k=d?f.id+"@"+d:"";
+  if(k&&S.pend[k])return`<button class="x" style="color:var(--rd)" onclick="undoPend('${k}')">Sin pagar ✕</button>`;
+  if(d&&d>=iso(new Date(T.getFullYear(),T.getMonth(),1)))return`<button class="x" style="color:var(--ac)" onclick="if(confirm('¿Marcar ${esc(f.name)} como NO pagado este mes?'))markPend('${f.id}')">✓ Pagado</button>`;
+  const n=occ(f,iso(T),iso(addD(T,62)))[0];return n?`<span class="mu">Próximo: ${fmtD(pd(n))}</span>`:""}
 function undoPend(k){delete S.pend[k];save();render()}
 function payFix(k){const[id,dt]=k.split("@"),f=S.fix.find(x=>x.id===id);delete S.pend[k];if(f&&dt<=S.snap.date)S.pagos.push({id:Date.now()+"",card:"fijo:"+f.name,amount:f.amt,date:iso(today())});save();render()}
 
