@@ -129,14 +129,16 @@ function vFix(){
   <input id="fn" placeholder="Nombre (Sueldo, Gimnasio, Spotify, Mamá…)" style="margin-top:8px">
   <div class="g2" style="margin-top:8px"><input id="fa" type="number" inputmode="decimal" placeholder="Monto"><input id="fd" type="date" value="${iso(today())}"></div>
   <div class="mu" style="margin-top:6px">En la fecha pon un pago real: el último o el próximo. De ahí saco el día y el ritmo.</div><button class="pri" onclick="addFix()">Agregar</button></div>
-  <h2>Mis ingresos y pagos fijos</h2><div class="c">${L.length?L.map(f=>`<div class="row"><div>${f.type==="i"?"💰":"📌"} ${esc(f.name)}<div class="mu">${f.freq==="w"?(f.every>1?"Cada 2 semanas, ":"Cada ")+DN[f.day].toLowerCase():"Día "+f.day+" de cada mes"}</div></div><div><b class="${f.type==="i"?"pos":""}">${M(f.amt)}</b>${f.type==="g"?`<button class="x" style="color:var(--ac)" onclick="markPend('${f.id}')">Pendiente</button>`:""}<button class="x" onclick="del('fix','${f.id}')">✕</button></div></div>`).join(""):'<div class="mu">Agrega aquí tu pago semanal, gimnasio, Spotify, etc.</div>'}</div>`;
+  <h2>Mis ingresos y pagos fijos</h2><div class="c">${L.length?L.map(f=>`<div class="row"><div>${f.type==="i"?"💰":"📌"} ${esc(f.name)}<div class="mu">${f.freq==="w"?(f.every>1?"Cada 2 semanas, ":"Cada ")+DN[f.day].toLowerCase():"Día "+f.day+" de cada mes"}</div></div><div><b class="${f.type==="i"?"pos":""}">${M(f.amt)}</b>${f.type==="g"?stBtn(f):""}<button class="x" onclick="del('fix','${f.id}')">✕</button></div></div>`).join(""):'<div class="mu">Agrega aquí tu pago semanal, gimnasio, Spotify, etc.</div>'}</div>`;
 }
 function addFix(){const n=$("#fn").value.trim(),a=parseFloat($("#fa").value),v=$("#fd").value;
   if(!n||!(a>0)||!v)return;const dt=pd(v),m=F.freq==="m";
   S.fix.push({id:Date.now()+"",type:F.type,name:n,amt:a,freq:m?"m":"w",every:F.freq==="b"?2:1,start:v,day:m?dt.getDate():dt.getDay()});save();render()}
 function lastOcc(f){const T=today(),r=occ(f,iso(addD(T,-62)),iso(T));return r[r.length-1]}
-function markPend(id){const f=S.fix.find(x=>x.id===id),d=f&&lastOcc(f);if(!d){alert("No encontré un pago reciente de este concepto");return}S.pend[id+"@"+d]=true;tab="plan";save();render()}
-function payFix(k){const[id]=k.split("@"),f=S.fix.find(x=>x.id===id);delete S.pend[k];if(f)S.pagos.push({id:Date.now()+"",card:"fijo:"+f.name,amount:f.amt,date:iso(today())});save();render()}
+function markPend(id){const f=S.fix.find(x=>x.id===id),d=f&&lastOcc(f);if(!d){alert("No encontré un pago reciente de este concepto");return}S.pend[id+"@"+d]=true;save();render()}
+function stBtn(f){const d=lastOcc(f);if(!d)return"";const k=f.id+"@"+d;return S.pend[k]?`<button class="x" style="color:var(--rd)" onclick="undoPend('${k}')">Sin pagar ✕</button>`:`<button class="x" style="color:var(--ac)" onclick="if(confirm('¿Marcar ${esc(f.name)} como NO pagado este mes?'))markPend('${f.id}')">✓ Pagado</button>`}
+function undoPend(k){delete S.pend[k];save();render()}
+function payFix(k){const[id,dt]=k.split("@"),f=S.fix.find(x=>x.id===id);delete S.pend[k];if(f&&dt<=S.snap.date)S.pagos.push({id:Date.now()+"",card:"fijo:"+f.name,amount:f.amt,date:iso(today())});save();render()}
 
 function vCards(){
   return alerts()+S.cards.map((c,i)=>{const f=cardInfo(c),av=(+c.limit||0)-used(c);return`<div class="c"><div class="row" style="border:none"><b>💳 ${esc(c.name)}</b><button class="x" onclick="S.cards.splice(${i},1);save();render()">✕</button></div>
