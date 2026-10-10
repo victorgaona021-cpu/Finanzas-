@@ -61,6 +61,14 @@ function cardInfo(c){
 const dueFor=(c,s)=>{const d=pd(s);let k=mk(d.getFullYear(),d.getMonth(),+c.cut);if(k<d)k=mk(d.getFullYear(),d.getMonth()+1,+c.cut);let p=mk(k.getFullYear(),k.getMonth(),+c.pay);if(p<=k)p=mk(k.getFullYear(),k.getMonth()+1,+c.pay);return iso(p)};
 const used=c=>(+c.debt0||0)+sum(S.exp,x=>x.card===c.name&&x.date>=(c.added||"2000-01-01"))-sum(S.pagos,p=>p.card===c.name);
 
+function resv(T,ew){let R=0,wk=0;const list=[];
+  S.fix.filter(f=>f.type==="g").forEach(f=>{
+    const nd=occ(f,ew,iso(addD(T,70)))[0];if(!nd)return;
+    const bh=occ(f,iso(addD(pd(nd),-70)),iso(addD(pd(nd),-1))),pv=bh.length?bh[bh.length-1]:iso(addD(pd(nd),-30));
+    const cyc=Math.max(1,Math.round((pd(nd)-pd(pv))/864e5)),el=Math.min(cyc,Math.max(0,Math.round((T-pd(pv))/864e5)));
+    const so=f.amt*el/cyc;R+=so;wk+=f.amt*7/cyc;list.push({f,nd,sofar:so})});
+  S.cards.forEach(c=>{const i=cardInfo(c);if(i.due>pd(ew)&&i.amount>0){R+=i.amount;list.push({f:{name:"Tarjeta "+c.name,amt:i.amount},nd:iso(i.due),sofar:i.amount})}});
+  list.sort((a,b)=>a.nd<b.nd?-1:1);return{R,wk,list}}
 function calc(){
   const T=today(),t=iso(T),sn=S.snap,ok=!!sn.date,base=sn.date||t;
   let main=+sn.main||0,cash=+sn.cash||0;const af=x=>x.date>base||(x.date===base&&+x.id>(+sn.ts||0));
@@ -71,14 +79,14 @@ function calc(){
   const ew=iso(addD(T,(7-T.getDay())%7)),em=iso(new Date(T.getFullYear(),T.getMonth()+1,0));
   const up=e=>{let o=0,i=0;S.fix.forEach(f=>{const n=occ(f,t,e).length*f.amt;f.type==="i"?i+=n:o+=n});S.cards.forEach(c=>{const f=cardInfo(c);if(f.due<=pd(e))o+=f.amount});return{o,i}};
   const late=[];Object.keys(S.pend).forEach(k=>{const f=S.fix.find(x=>x.id===k.split("@")[0]);if(f&&f.type==="g")late.push({k,f,dt:k.split("@")[1]})});const L=late.reduce((a,x)=>a+x.f.amt,0);const w=up(ew),m=up(em),mp=+sn.mp||0,ah=+sn.ah||0;w.o+=L;m.o+=L;
-  const mpT=Math.max(0,(m.o-w.o)-(m.i-w.i));
+  const rv=resv(T,ew),mpT=rv.R;
   const avgW=S.fix.filter(f=>f.type==="i").reduce((s,f)=>s+(f.freq==="w"?f.amt/(f.every||1):f.amt/4.33),0);
   const a0=main+cash+mp+ah+w.i-w.o-mpT-ah;
   const sv=Math.max(0,Math.min(Math.round(avgW*(S.cfg.rate||0)/100),a0));
   let libre=a0-sv;
   const ws=iso(addD(T,-((T.getDay()+6)%7)));
   S.exp.forEach(x=>{const c=S.cards.find(c=>c.name===x.card);if(c&&x.date>=ws&&x.date<=t&&dueFor(c,x.date)!==iso(cardInfo(c).due))libre-=x.amount});
-  return{ok,main,cash,mp,ah,w,m,mpT,sv,libre,late,days:(7-T.getDay())%7+1};
+  return{ok,main,cash,mp,ah,w,m,mpT,sv,libre,late,rv,days:(7-T.getDay())%7+1};
 }
 
 function bestCard(){
@@ -90,7 +98,7 @@ function bestCard(){
 function vPlan(){
   const k=calc(),dl=k.libre/k.days,b=bestCard();
   const row=(n,sh,hv,note)=>`<div class="row"><div>${n}<div class="mu">${note}</div></div><div style="text-align:right"><b>${M(sh)}</b><div class="mu">tienes ${M(hv)}</div></div></div>`;
-  let tips=[];const pendH=k.late.length?`<h2>Pendientes de pago</h2><div class="c">${k.late.map(x=>`<div class="row"><div>${esc(x.f.name)}<div class="mu">venció el ${x.dt}</div></div><div><b>${M(x.f.amt)}</b> <button class="x" style="color:var(--ac)" onclick="payFix('${x.k}')">Ya pagué</button></div></div>`).join("")}</div>`:"";const brk=`<h2>Cómo salió el número</h2><div class="c"><div class="row"><span>Tienes ahora (cuentas + efectivo + MP)</span><b>${M(k.main+k.cash+k.mp)}</b></div><div class="row"><span>+ Ingresos de esta semana</span><b>${M(k.w.i)}</b></div><div class="row"><span>− Pagos de esta semana y pendientes</span><b>${M(k.w.o)}</b></div><div class="row"><span>− Reserva para pagos del mes</span><b>${M(k.mpT)}</b></div><div class="row"><span>− Ahorro de la semana</span><b>${M(k.sv)}</b></div><div class="row"><span>= Libre</span><b>${M(k.libre)}</b></div></div>`;
+  let tips=[];const pendH=k.late.length?`<h2>Pendientes de pago</h2><div class="c">${k.late.map(x=>`<div class="row"><div>${esc(x.f.name)}<div class="mu">venció el ${x.dt}</div></div><div><b>${M(x.f.amt)}</b> <button class="x" style="color:var(--ac)" onclick="payFix('${x.k}')">Ya pagué</button></div></div>`).join("")}</div>`:"";const nxt=k.rv.list.length?`<h2>Pagos que vienen</h2><div class="c"><div class="mu" style="margin-bottom:6px">Para no juntarlos al final, aparta unos <b>${M(k.rv.wk)}</b> por semana.</div>${k.rv.list.map(x=>`<div class="row"><div>${esc(x.f.name)}<div class="mu">vence ${fmtD(pd(x.nd))} · ya deberías llevar ${M(x.sofar)}</div></div><b>${M(x.f.amt)}</b></div>`).join("")}</div>`:"";const brk=`<h2>Cómo salió el número</h2><div class="c"><div class="row"><span>Tienes ahora (cuentas + efectivo + MP)</span><b>${M(k.main+k.cash+k.mp)}</b></div><div class="row"><span>+ Ingresos de esta semana</span><b>${M(k.w.i)}</b></div><div class="row"><span>− Pagos de esta semana y pendientes</span><b>${M(k.w.o)}</b></div><div class="row"><span>− Apartado para pagos que vienen</span><b>${M(k.mpT)}</b></div><div class="row"><span>− Ahorro de la semana</span><b>${M(k.sv)}</b></div><div class="row"><span>= Libre</span><b>${M(k.libre)}</b></div></div>`;
   if(!k.ok)tips.push("Primero captura tus saldos en ⚙️ Más para que el plan sea real.");
   if(k.libre<0)tips.push(`⚠️ Te faltan ${M(-k.libre)} para cubrir pagos${k.sv?" y ahorro":""} de esta semana. Evita gastos extra y no uses crédito para lo que no sea necesario.`);
   else{tips.push(`Puedes gastar hasta ${M(dl)} por día (${M(k.libre)} en total esta semana). Lo que no gastes, muévelo a ahorro.`);
@@ -99,7 +107,7 @@ function vPlan(){
   return alerts()+`<div class="c" style="text-align:center"><div class="mu">Libre para gastar esta semana</div><div class="big ${k.libre>=0?"pos":"neg"}" style="font-size:38px">${M(k.libre)}</div><div class="mu">${k.libre>=0?"≈ "+M(dl)+" por día":"vas corto"} · quedan ${k.days} día(s)</div></div>
   <div class="g2"><div class="c"><div class="mu">Pagos esta semana</div><div class="big neg">${M(k.w.o)}</div></div><div class="c"><div class="mu">Ingresos esperados</div><div class="big pos">${M(k.w.i)}</div></div>
   <div class="c"><div class="mu">Pagos resto del mes</div><div class="big">${M(k.m.o)}</div></div><div class="c"><div class="mu">Ingresos resto del mes</div><div class="big">${M(k.m.i)}</div></div></div>
-  ${pendH}${brk}<h2>Dónde debe estar tu dinero</h2><div class="c">${row("Cuenta principal + efectivo",Math.max(0,k.libre+k.w.o-k.w.i),k.main+k.cash,"libre + pagos de la semana")}${row("Caja Mercado Pago",k.mpT,k.mp,"pagos del resto del mes")}${row("Caja de ahorro",k.ah+k.sv,k.ah,k.sv?"mueve "+M(k.sv)+" esta semana ("+(S.cfg.rate||0)+"% de tu ingreso)":"sin aporte esta semana")}</div>
+  ${pendH}${brk}${nxt}<h2>Dónde debe estar tu dinero</h2><div class="c">${row("Cuenta principal + efectivo",Math.max(0,k.libre+k.w.o-k.w.i),k.main+k.cash,"libre + pagos de la semana")}${row("Caja Mercado Pago",k.mpT,k.mp,"apartado para tus pagos que vienen")}${row("Caja de ahorro",k.ah+k.sv,k.ah,k.sv?"mueve "+M(k.sv)+" esta semana ("+(S.cfg.rate||0)+"% de tu ingreso)":"sin aporte esta semana")}</div>
   <h2>Asistente</h2><div class="c">${tips.map(t=>`<p style="margin:0 0 8px">${t}</p>`).join("")}<div class="mu">Guía automática con tus datos; no es asesoría financiera.</div></div>
   ${S.cards.length?`<h2>Crédito disponible</h2><div class="c">${S.cards.map(c=>`<div class="row"><span>💳 ${esc(c.name)}</span><span><b>${M((+c.limit||0)-used(c))}</b> <span class="mu">de ${M(+c.limit||0)}</span></span></div>`).join("")}</div>`:""}`;
 }
@@ -128,7 +136,7 @@ function vFix(){
   <select onchange="F.freq=this.value;render()"><option value="w" ${F.freq==="w"?"selected":""}>Cada semana</option><option value="b" ${F.freq==="b"?"selected":""}>Cada 2 semanas</option><option value="m" ${F.freq==="m"?"selected":""}>Cada mes</option></select></div>
   <input id="fn" placeholder="Nombre (Sueldo, Gimnasio, Spotify, Mamá…)" style="margin-top:8px">
   <div class="g2" style="margin-top:8px"><input id="fa" type="number" inputmode="decimal" placeholder="Monto"><input id="fd" type="date" value="${iso(today())}"></div>
-  <div class="mu" style="margin-top:6px">En la fecha pon un pago real: el último o el próximo. De ahí saco el día y el ritmo.</div><button class="pri" onclick="addFix()">Agregar</button></div>
+  <div class="mu" style="margin-top:6px">En la fecha pon un pago real: el último o el próximo. De ahí saco el día y el ritmo. Lo que ya cobraste hoy o antes ya debe estar en tus saldos.</div><button class="pri" onclick="addFix()">Agregar</button></div>
   <h2>Mis ingresos y pagos fijos</h2><div class="c">${L.length?L.map(f=>`<div class="row"><div>${f.type==="i"?"💰":"📌"} ${esc(f.name)}<div class="mu">${f.freq==="w"?(f.every>1?"Cada 2 semanas, ":"Cada ")+DN[f.day].toLowerCase():"Día "+f.day+" de cada mes"}</div></div><div><b class="${f.type==="i"?"pos":""}">${M(f.amt)}</b>${f.type==="g"?stBtn(f):""}<button class="x" onclick="del('fix','${f.id}')">✕</button></div></div>`).join(""):'<div class="mu">Agrega aquí tu pago semanal, gimnasio, Spotify, etc.</div>'}</div>`;
 }
 function addFix(){const n=$("#fn").value.trim(),a=parseFloat($("#fa").value),v=$("#fd").value;
