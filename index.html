@@ -46,7 +46,7 @@ const mk=(y,m,d)=>{const b=new Date(y,m,1);return new Date(b.getFullYear(),b.get
 const today=()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate())};
 const fmtD=d=>d.toLocaleDateString("es-MX",{day:"numeric",month:"short"});
 const sum=(a,f)=>a.filter(f).reduce((s,x)=>s+x.amount,0);
-const occ=(f,a,b)=>{const r=[];if(!a||a>=b)return r;for(let d=addD(pd(a),1),e=pd(b);d<=e;d=addD(d,1)){const ok=f.freq==="w"?(d.getDay()==f.day&&(!(f.every>1)||((Math.round((d-pd(f.start))/6048e5)%f.every)+f.every)%f.every===0)):Math.min(+f.day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate())==d.getDate();if(ok)r.push(iso(d))}return r};
+const occ=(f,a,b)=>{const r=[];if(!a||a>=b)return r;for(let d=addD(pd(a),1),e=pd(b);d<=e;d=addD(d,1)){const ok=f.freq==="w"?(d.getDay()==f.day&&(!(f.every>1)||((Math.round((d-pd(f.start))/6048e5)%f.every)+f.every)%f.every===0)):Math.min(+f.day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate())==d.getDate();if(ok&&(!f.from||iso(d)>=f.from)&&(!f.end||iso(d)<=f.end))r.push(iso(d))}return r};
 
 function cardInfo(c){
   const t=today(),cut=+c.cut,pay=+c.pay;
@@ -82,11 +82,12 @@ function calc(){
   const rv=resv(T,ew),mpT=rv.R;
   const avgW=S.fix.filter(f=>f.type==="i").reduce((s,f)=>s+(f.freq==="w"?f.amt/(f.every||1):f.amt/4.33),0);
   const a0=main+cash+mp+ah+w.i-w.o-mpT-ah;
-  const sv=Math.max(0,Math.min(Math.round(avgW*(S.cfg.rate||0)/100),a0));
+  let sv=Math.max(0,Math.min(Math.round(avgW*(S.cfg.rate||0)/100),a0));
   let libre=a0-sv;
   const ws=iso(addD(T,-((T.getDay()+6)%7)));
   S.exp.forEach(x=>{const c=S.cards.find(c=>c.name===x.card);if(c&&x.date>=ws&&x.date<=t&&dueFor(c,x.date)!==iso(cardInfo(c).due))libre-=x.amount});
-  return{ok,main,cash,mp,ah,w,m,mpT,sv,libre,late,rv,days:(7-T.getDay())%7+1};
+  let cap=null;if(+S.cfg.gustos>0){const sp=sum(S.exp,x=>x.date>=ws&&x.date<=t);cap=Math.max(0,+S.cfg.gustos-sp);const a1=libre+sv;libre=Math.min(a1,cap);sv=Math.max(0,a1-libre)}
+  return{ok,cap,main,cash,mp,ah,w,m,mpT,sv,libre,late,rv,days:(7-T.getDay())%7+1};
 }
 
 function bestCard(){
@@ -103,11 +104,12 @@ function vPlan(){
   if(k.libre<0)tips.push(`⚠️ Te faltan ${M(-k.libre)} para cubrir pagos${k.sv?" y ahorro":""} de esta semana. Evita gastos extra y no uses crédito para lo que no sea necesario.`);
   else{tips.push(`Puedes gastar hasta ${M(dl)} por día (${M(k.libre)} en total esta semana). Lo que no gastes, muévelo a ahorro.`);
     if(S.cards.length&&b)tips.push(`Si necesitas usar crédito, la mejor hoy es ${esc(b.c.name)}: pagarías hasta el ${fmtD(b.p)} (${b.days} días). Úsalo solo si lo pagas completo y sin salirte de tu libre.`)}
+  if(k.cap!=null)tips.push(`Tope de gustos de la semana: te quedan ${M(k.cap)}. Orden de tu dinero: 1) pagos fijos y deudas, 2) ahorro, 3) gustos (Andrea, familia, salidas). Lo que pase del tope se va a ahorro.`);
   if(k.m.o>k.main+k.cash+k.mp+k.m.i)tips.push("Los pagos que faltan del mes superan tu dinero + ingresos esperados. Revisa tus gastos fijos.");
   return alerts()+`<div class="c" style="text-align:center"><div class="mu">Libre para gastar esta semana</div><div class="big ${k.libre>=0?"pos":"neg"}" style="font-size:38px">${M(k.libre)}</div><div class="mu">${k.libre>=0?"≈ "+M(dl)+" por día":"vas corto"} · quedan ${k.days} día(s)</div></div>
-  <div class="g2"><div class="c"><div class="mu">Pagos esta semana</div><div class="big neg">${M(k.w.o)}</div></div><div class="c"><div class="mu">Ingresos esperados</div><div class="big pos">${M(k.w.i)}</div></div>
+  <div class="c"><div class="mu">¿Puedo gastar un extra?</div><div class="g2" style="margin-top:6px"><input id="q" type="number" inputmode="decimal" placeholder="Monto (ej. 200)"><button class="pri" style="margin-top:0;padding:10px" onclick="canSpend()">Revisar</button></div><div id="qr" style="margin-top:8px;font-size:14px"></div></div><div class="g2"><div class="c"><div class="mu">Pagos esta semana</div><div class="big neg">${M(k.w.o)}</div></div><div class="c"><div class="mu">Ingresos esperados</div><div class="big pos">${M(k.w.i)}</div></div>
   <div class="c"><div class="mu">Pagos resto del mes</div><div class="big">${M(k.m.o)}</div></div><div class="c"><div class="mu">Ingresos resto del mes</div><div class="big">${M(k.m.i)}</div></div></div>
-  ${pendH}${brk}${nxt}<h2>Dónde debe estar tu dinero</h2><div class="c">${row("Cuenta principal + efectivo",Math.max(0,k.libre+k.w.o-k.w.i),k.main+k.cash,"libre + pagos de la semana")}${row("Caja Mercado Pago",k.mpT,k.mp,"apartado para tus pagos que vienen")}${row("Caja de ahorro",k.ah+k.sv,k.ah,k.sv?"mueve "+M(k.sv)+" esta semana ("+(S.cfg.rate||0)+"% de tu ingreso)":"sin aporte esta semana")}</div>
+  ${pendH}${brk}${nxt}<h2>Dónde debe estar tu dinero</h2><div class="c">${row("Cuenta principal + efectivo",Math.max(0,k.libre+k.w.o-k.w.i),k.main+k.cash,"libre + pagos de la semana")}${row("Caja Mercado Pago",k.mpT,k.mp,"apartado para tus pagos que vienen")}${row("Caja de ahorro",k.ah+k.sv,k.ah,k.sv?"mueve "+M(k.sv)+(k.cap!=null?" (lo que pasa de tu tope de gustos)":" esta semana ("+(S.cfg.rate||0)+"% de tu ingreso)"):"sin aporte esta semana")}</div>
   <h2>Asistente</h2><div class="c">${tips.map(t=>`<p style="margin:0 0 8px">${t}</p>`).join("")}<div class="mu">Guía automática con tus datos; no es asesoría financiera.</div></div>
   ${S.cards.length?`<h2>Crédito disponible</h2><div class="c">${S.cards.map(c=>`<div class="row"><span>💳 ${esc(c.name)}</span><span><b>${M((+c.limit||0)-used(c))}</b> <span class="mu">de ${M(+c.limit||0)}</span></span></div>`).join("")}</div>`:""}`;
 }
@@ -136,12 +138,12 @@ function vFix(){
   <select onchange="F.freq=this.value;render()"><option value="w" ${F.freq==="w"?"selected":""}>Cada semana</option><option value="b" ${F.freq==="b"?"selected":""}>Cada 2 semanas</option><option value="m" ${F.freq==="m"?"selected":""}>Cada mes</option></select></div>
   <input id="fn" placeholder="Nombre (Sueldo, Gimnasio, Spotify, Mamá…)" style="margin-top:8px">
   <div class="g2" style="margin-top:8px"><input id="fa" type="number" inputmode="decimal" placeholder="Monto"><input id="fd" type="date" value="${iso(today())}"></div>
-  <div class="mu" style="margin-top:6px">En la fecha pon un pago real: el último o el próximo. De ahí saco el día y el ritmo. Lo que ya cobraste hoy o antes ya debe estar en tus saldos.</div><button class="pri" onclick="addFix()">Agregar</button></div>
-  <h2>Mis ingresos y pagos fijos</h2><div class="c">${L.length?L.map(f=>`<div class="row"><div>${f.type==="i"?"💰":"📌"} ${esc(f.name)}<div class="mu">${f.freq==="w"?(f.every>1?"Cada 2 semanas, ":"Cada ")+DN[f.day].toLowerCase():"Día "+f.day+" de cada mes"}</div></div><div><b class="${f.type==="i"?"pos":""}">${M(f.amt)}</b>${f.type==="g"?stBtn(f):""}<button class="x" onclick="del('fix','${f.id}')">✕</button></div></div>`).join(""):'<div class="mu">Agrega aquí tu pago semanal, gimnasio, Spotify, etc.</div>'}</div>`;
+  <div class="g2" style="margin-top:8px"><label class="mu">Empieza (opcional)<input id="ff" type="date"></label><label class="mu">Termina (opcional)<input id="fh" type="date"></label></div><div class="mu" style="margin-top:6px">En la fecha pon un pago real: el último o el próximo. De ahí saco el día y el ritmo. Lo que ya cobraste hoy o antes ya debe estar en tus saldos.</div><button class="pri" onclick="addFix()">Agregar</button></div>
+  <h2>Mis ingresos y pagos fijos</h2><div class="c">${L.length?L.map(f=>`<div class="row"><div>${f.type==="i"?"💰":"📌"} ${esc(f.name)}<div class="mu">${f.freq==="w"?(f.every>1?"Cada 2 semanas, ":"Cada ")+DN[f.day].toLowerCase():"Día "+f.day+" de cada mes"}${f.from?" · desde "+f.from:""}${f.end?" · hasta "+f.end:""}</div></div><div><b class="${f.type==="i"?"pos":""}">${M(f.amt)}</b>${f.type==="g"?stBtn(f):""}<button class="x" onclick="del('fix','${f.id}')">✕</button></div></div>`).join(""):'<div class="mu">Agrega aquí tu pago semanal, gimnasio, Spotify, etc.</div>'}</div>`;
 }
 function addFix(){const n=$("#fn").value.trim(),a=parseFloat($("#fa").value),v=$("#fd").value;
   if(!n||!(a>0)||!v)return;const dt=pd(v),m=F.freq==="m";
-  S.fix.push({id:Date.now()+"",type:F.type,name:n,amt:a,freq:m?"m":"w",every:F.freq==="b"?2:1,start:v,day:m?dt.getDate():dt.getDay()});save();render()}
+  S.fix.push({id:Date.now()+"",type:F.type,name:n,amt:a,freq:m?"m":"w",every:F.freq==="b"?2:1,start:v,from:$("#ff").value||"",end:$("#fh").value||"",day:m?dt.getDate():dt.getDay()});save();render()}
 function lastOcc(f){const T=today(),r=occ(f,iso(addD(T,-62)),iso(T));return r[r.length-1]}
 function markPend(id){const f=S.fix.find(x=>x.id===id),d=f&&lastOcc(f);if(!d){alert("No encontré un pago reciente de este concepto");return}S.pend[id+"@"+d]=true;save();render()}
 function stBtn(f){const T=today(),d=lastOcc(f),k=d?f.id+"@"+d:"";
@@ -175,13 +177,20 @@ function vMore(){
   <div class="g2"><label class="mu">Cuenta principal<input id="s1" type="number" value="${sn.main||""}" placeholder="0"></label><label class="mu">Efectivo<input id="s2" type="number" value="${sn.cash||""}" placeholder="0"></label>
   <label class="mu">Caja Mercado Pago<input id="s3" type="number" value="${sn.mp||""}" placeholder="0"></label><label class="mu">Caja de ahorro<input id="s4" type="number" value="${sn.ah||""}" placeholder="0"></label></div>
   <label class="mu" style="display:block;margin-top:8px">% de tu ingreso a ahorrar por semana<input id="s5" type="number" value="${S.cfg.rate}"></label>
-  <button class="pri" onclick="saveSnap()">Guardar saldos</button>
+  <label class="mu" style="display:block;margin-top:8px">Tope de gustos por semana (Andrea, familia, salidas). 0 = sin tope<input id="s6" type="number" value="${S.cfg.gustos||0}"></label><button class="pri" onclick="saveSnap()">Guardar saldos</button>
   <div class="mu" style="margin-top:6px">Actualízalos cuando muevas dinero entre cajas. Desde esa fecha la app suma ingresos y resta gastos sola.</div></div>
-  <h2>Gastos del mes: ${M(tot)}</h2><div class="c">${by.length?by.map(x=>`<div style="margin-bottom:10px"><div class="row" style="border:none;padding:0"><span>${x.e} ${x.n}</span><span><b>${M(x.v)}</b> <span class="mu">${tot?Math.round(x.v/tot*100):0}% · mes pasado ${M(x.p)}</span></span></div><div class="bar" style="width:${x.v/mx*100}%"></div></div>`).join(""):'<div class="mu">Sin gastos este mes.</div>'}</div>
+  <h2>Ingreso extra</h2><div class="c"><div class="g2"><input id="ex" type="number" inputmode="decimal" placeholder="Monto"><input id="et" placeholder="De dónde (adelanto, venta…)"></div><button class="pri" style="padding:10px" onclick="addInc()">Registrar ingreso extra</button><div class="mu" style="margin-top:6px">Se suma a tu cuenta principal hoy. No lo captures también en tus saldos.</div></div><h2>Gastos del mes: ${M(tot)}</h2><div class="c">${by.length?by.map(x=>`<div style="margin-bottom:10px"><div class="row" style="border:none;padding:0"><span>${x.e} ${x.n}</span><span><b>${M(x.v)}</b> <span class="mu">${tot?Math.round(x.v/tot*100):0}% · mes pasado ${M(x.p)}</span></span></div><div class="bar" style="width:${x.v/mx*100}%"></div></div>`).join(""):'<div class="mu">Sin gastos este mes.</div>'}</div>
   <h2>Respaldo</h2><div class="c"><div class="mu">Para pasar tus datos del celular a la compu: genera el respaldo, cópialo y pégalo en la otra app con Importar.</div><textarea id="bk" rows="4" style="width:100%;margin-top:8px;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:10px"></textarea>
-  <div class="g2" style="margin-top:8px"><button onclick="$('#bk').value=JSON.stringify(S);$('#bk').select()">Generar</button><button onclick="impBk()">Importar</button></div></div>`;
+  <div class="g2" style="margin-top:8px"><button onclick="$('#bk').value=JSON.stringify(S);$('#bk').select()">Generar</button><button onclick="impBk()">Importar</button></div><button class="pri" style="background:var(--rd);margin-top:10px;padding:10px" onclick="resetAll()">Borrar todos los datos y empezar en 0</button></div>`;
 }
-function saveSnap(){S.snap={date:iso(today()),ts:Date.now(),main:+$("#s1").value||0,cash:+$("#s2").value||0,mp:+$("#s3").value||0,ah:+$("#s4").value||0};S.cfg.rate=+$("#s5").value||0;save();tab="plan";render()}
+function addInc(){const a=parseFloat($("#ex").value);if(!(a>0))return;S.inc.push({id:Date.now()+"",date:iso(today()),amount:a,src:$("#et").value});save();tab="plan";render()}
+function canSpend(){const a=parseFloat($("#q").value),k=calc(),o=$("#qr");if(!(a>0)){o.textContent="";return}
+  let t;if(a<=k.libre)t=`Sí. No toca tus pagos fijos ni tu ahorro. Te quedarían ${M(k.libre-a)} de libre esta semana.`;
+  else if(a<=k.libre+k.sv)t=`Se puede, pero sale de tu ahorro de la semana: aportarías ${M(k.sv-(a-k.libre))} en vez de ${M(k.sv)}. Tus pagos fijos siguen cubiertos.`;
+  else t=`Mejor no: te pasas ${M(a-Math.max(0,k.libre)-k.sv)} de lo que tienes libre y de ahorro, y tendrías que tocar lo apartado para tus pagos fijos.`;
+  o.textContent=t}
+function resetAll(){if(confirm("¿Borrar TODOS los datos de este dispositivo? Genera un respaldo antes si lo quieres guardar.")){try{localStorage.removeItem("fin1")}catch(e){}location.reload()}}
+function saveSnap(){S.snap={date:iso(today()),ts:Date.now(),main:+$("#s1").value||0,cash:+$("#s2").value||0,mp:+$("#s3").value||0,ah:+$("#s4").value||0};S.cfg.rate=+$("#s5").value||0;S.cfg.gustos=+$("#s6").value||0;save();tab="plan";render()}
 function impBk(){try{const r=JSON.parse($("#bk").value);if(r&&r.exp&&r.cards&&confirm("Esto reemplaza los datos de este dispositivo. ¿Continuar?")){S=Object.assign(S,r);save();tab="plan";render()}}catch(e){alert("Respaldo no válido")}}
 
 function render(){
